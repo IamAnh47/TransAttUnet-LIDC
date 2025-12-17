@@ -40,16 +40,16 @@ model:
     transformer_heads: 8  # Số lượng attention heads trong TSA
     # Loại kết nối Multi-scale Skip Connection
     # Options: "cascade" (U-Net gốc), "residual" (TransAttUnet_R), "dense" (TransAttUnet_D)
-    skip_connection_type: "residual"  
+    # skip_connection_type: "dense"
 
 train:
   # Các siêu tham số (Hyperparameters) theo bài báo
   epochs: 100           # Tổng số vòng train 
-  batch_size: 4         # Batch size nhỏ do Transformer tốn bộ nhớ 
+  batch_size: 8         # Batch size nhỏ do Transformer tốn bộ nhớ
   
   optimizer:
     name: "SGD"         # Tác giả dùng Stochastic Gradient Descent 
-    lr: 0.001          # Tốc độ học khởi tạo
+    lr: 0.0002          # Tốc độ học khởi tạo
     momentum: 0.9       # 
     weight_decay: 0.0001 # 
   
