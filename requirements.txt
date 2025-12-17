@@ -1,0 +1,12 @@
+# --extra-index-url https://download.pytorch.org/whl/test/cu124
+
+numpy
+matplotlib
+pydicom
+pylidc
+scipy
+pyyaml
+tqdm
+setuptools
+torch
+torchvision

@@ -1,0 +1,70 @@
+project:
+  name: "TransAttUnet-LIDC"
+  description: "Lung Nodule Segmentation using TransAttUnet on LIDC-IDRI dataset"
+  version: "1.0"
+
+paths:
+  raw_data: "data/raw/LIDC-IDRI"
+  # Đường dẫn đến dữ liệu đã preprocess (chứa subfolder images/ và masks/)
+  processed_data: "data/processed"
+  
+  # File chia tập train/val/test
+  split_file: "data/processed/split.json"
+  
+  # Nơi lưu checkpoints (model đã train) và logs
+  output_dir: "outputs"
+  log_dir: "outputs/logs"
+  checkpoint_dir: "outputs/checkpoints"
+
+data:
+  image_size: 512       # Kích thước ảnh chuẩn theo bài báo
+  in_channels: 1        # Ảnh CT phổi là grayscale (1 kênh)
+  num_classes: 1        # Bài toán nhị phân (Nodule vs Background)
+  num_workers: 4        # Số luồng load dữ liệu
+  pin_memory: True      # Tăng tốc load dữ liệu sang GPU
+# Các tham số Preprocessing
+  target_spacing: [1.0, 1.0, 1.0]
+  window_center: -600
+  window_width: 1500
+  consensus_level: 0.5
+  padding: [[20, 20], [20, 20], [20, 20]] # Lưu ý format list lồng nhau
+  final_size: 512
+  save_negative: False
+
+model:
+  name: "TransAttUnet"
+  architecture:
+    n_channels: 1       # Số kênh đầu vào
+    n_classes: 1        # Số kênh đầu ra
+    # Tham số cho module Self-aware Attention (SAA)
+    transformer_heads: 8  # Số lượng attention heads trong TSA
+    # Loại kết nối Multi-scale Skip Connection
+    # Options: "cascade" (U-Net gốc), "residual" (TransAttUnet_R), "dense" (TransAttUnet_D)
+    skip_connection_type: "residual"  
+
+train:
+  # Các siêu tham số (Hyperparameters) theo bài báo
+  epochs: 100           # Tổng số vòng train 
+  batch_size: 4         # Batch size nhỏ do Transformer tốn bộ nhớ 
+  
+  optimizer:
+    name: "SGD"         # Tác giả dùng Stochastic Gradient Descent 
+    lr: 0.001          # Tốc độ học khởi tạo
+    momentum: 0.9       # 
+    weight_decay: 0.0001 # 
+  
+  scheduler:
+    step_size: 40       # Giảm learning rate sau mỗi 40 epochs 
+    gamma: 0.1          # Giảm đi 10 lần (chia 10) 
+
+  loss:
+    # Loss Function = alpha * BCE + beta * Dice
+    alpha: 0.5          # Trọng số cho Binary Cross Entropy
+    beta: 0.5           # Trọng số cho Dice Loss
+    smooth: 1.0e-6      # Epsilon để tránh chia cho 0
+
+  # Cấu hình lưu/kiểm tra
+  save_interval: 10     # Lưu model sau mỗi 10 epochs
+  early_stopping: 20    # Dừng nếu không cải thiện sau 20 epochs
+  seed: 42              # Random seed để tái lập kết quả
+  device: "cuda"        # cuda nếu có GPU, cpu nếu không
