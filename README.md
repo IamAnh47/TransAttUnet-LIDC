@@ -76,31 +76,22 @@ Nếu train trên modal thì chạy cell giải nén để train cho dễ
     import os
     import shutil
     
-    volume_root = "/mnt/TransAttUnet"
+    volume_root = "/mnt/model"
     
-    # 1. Đảm bảo có folder data/processed
-    target_dir = os.path.join(volume_root, "data", "processed")
-    os.makedirs(target_dir, exist_ok=True)
-    print(f"Đã sẵn sàng thư mục: {target_dir}")
-    
-    # 2. Giải nén processed.tar.gz vào đúng data/processed
+    # Giải nén processed.tar.gz
     tar_path = os.path.join(volume_root, "processed.tar.gz")
     
     if not os.path.exists(tar_path):
         print("Không tìm thấy file processed.tar.gz – bạn đã upload chưa?")
     else:
         print("Đang giải nén processed.tar.gz → data/processed ... (chờ 20–60 giây)")
-        !tar -xzf "{tar_path}" -C "{target_dir}" --strip-components=0
+        !tar -xzf "{tar_path}" --strip-components=0
         print("GIẢI NÉN XONG 100%!")
     
-    # 3. Kiểm tra kết quả
-    print("\nN{party popper} HOÀN TẤT! Cấu trúc hiện tại:")
-    print("data/processed chứa:")
-    print(os.listdir(target_dir)[:30]) 
-    
-    #if os.path.exists(tar_path):
-    #    os.remove(tar_path)
-    #    print(f"\nĐã xóa {tar_path} để tiết kiệm dung lượng")
+    # Xóa file tar để tiết kiệm dung lượng
+    # if os.path.exists(tar_path):
+    #     os.remove(tar_path)
+    #     print(f"\nĐã xóa {tar_path} để tiết kiệm dung lượng")
     
     print("\nSẴN SÀNG TRAIN MODEL!")
 ```
