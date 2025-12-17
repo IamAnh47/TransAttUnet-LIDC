@@ -74,26 +74,40 @@ Nếu train trên modal thì chạy cell giải nén để train cho dễ
 
 ```bash
     import os
-    import shutil
     
     volume_root = "/mnt/model"
+    target_dir = os.path.join(volume_root, "data", "processed")
     
-    # Giải nén processed.tar.gz
+    # 1. Tạo thư mục đích nếu chưa có
+    os.makedirs(target_dir, exist_ok=True)
+    print(f"Đã sẵn sàng thư mục: {target_dir}")
+    
+    # 2. Đường dẫn file tar
     tar_path = os.path.join(volume_root, "processed.tar.gz")
     
     if not os.path.exists(tar_path):
         print("Không tìm thấy file processed.tar.gz – bạn đã upload chưa?")
     else:
-        print("Đang giải nén processed.tar.gz → data/processed ... (chờ 20–60 giây)")
-        !tar -xzf "{tar_path}" --strip-components=0
-        print("GIẢI NÉN XONG 100%!")
+        print("Đang giải nén processed.tar.gz với strip 2 cấp ... (chờ 20–60 giây)")
+        
+        # Lệnh chính: strip-components=2 để bỏ cấp data/processed/
+        !tar -xzf "{tar_path}" -C "{target_dir}" --strip-components=2
+        
+        print("GIẢI NÉN XONG 100%! Nội dung đã nằm đúng trong data/processed/")
     
-    # Xóa file tar để tiết kiệm dung lượng
-    # if os.path.exists(tar_path):
-    #     os.remove(tar_path)
-    #     print(f"\nĐã xóa {tar_path} để tiết kiệm dung lượng")
+    # 3. Kiểm tra kết quả
+    print("\nHOÀN TẤT! Các item trong data/processed:")
+    items = os.listdir(target_dir)
+    print(f"Tổng cộng: {len(items)} items")
+    print("30 item đầu tiên:")
+    for item in sorted(items)[:30]:
+        print(f"  - {item}")
     
-    print("\nSẴN SÀNG TRAIN MODEL!")
+    # 4. (Tùy chọn) Xóa file tar để tiết kiệm dung lượng Volume
+    # !rm "{tar_path}"
+    # print(f"Đã xóa file tar gốc")
+    
+    print("\nSẴN SÀNG TRAIN MODEL! 🚀")
 ```
 
 Kết quả sẽ được lưu vào thư mục data/processed/ gồm:
