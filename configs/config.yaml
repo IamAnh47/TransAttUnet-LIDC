@@ -4,22 +4,26 @@ project:
   version: "1.0"
 
 paths:
-  raw_data: "data/raw/LIDC-IDRI"
+  raw_data: "data/raw"
   # Đường dẫn đến dữ liệu đã preprocess (chứa subfolder images/ và masks/)
   processed_data: "data/processed"
+
+  modal_processed_data: "/mnt/storage/data/processed/"
   
   # File chia tập train/val/test
   split_file: "data/processed/split.json"
   
+  modal_split_file: "/mnt/storage/data/processed/split.json"
+
   # Nơi lưu checkpoints (model đã train) và logs
-  output_dir: "outputs"
-  log_dir: "outputs/logs"
-  checkpoint_dir: "outputs/checkpoints"
+  output_dir: "/mnt/storage/outputs"
+  log_dir: "/mnt/storage/outputs/logs"
+  checkpoint_dir: "/mnt/storage/outputs/checkpoints"
 
 data:
   image_size: 512       # Kích thước ảnh chuẩn theo bài báo
   in_channels: 1        # Ảnh CT phổi là grayscale (1 kênh)
-  num_classes: 1        # Bài toán nhị phân (Nodule vs Background)
+  num_classes: 3        # Bài toán 3 lớp (Nodule, vùng phổi và Background)
   num_workers: 4        # Số luồng load dữ liệu
   pin_memory: True      # Tăng tốc load dữ liệu sang GPU
 # Các tham số Preprocessing
@@ -35,7 +39,7 @@ model:
   name: "TransAttUnet"
   architecture:
     n_channels: 1       # Số kênh đầu vào
-    n_classes: 1        # Số kênh đầu ra
+    n_classes: 3        # Số kênh đầu ra
     # Tham số cho module Self-aware Attention (SAA)
     transformer_heads: 8  # Số lượng attention heads trong TSA
     # Loại kết nối Multi-scale Skip Connection
@@ -48,20 +52,20 @@ train:
   batch_size: 8         # Batch size nhỏ do Transformer tốn bộ nhớ
   
   optimizer:
-    name: "SGD"         # Tác giả dùng Stochastic Gradient Descent 
-    lr: 0.0002          # Tốc độ học khởi tạo
-    momentum: 0.9       # 
-    weight_decay: 0.0001 # 
+    name: "AdamW"
+    lr: 0.0001
+    weight_decay: 0.0001 
   
   scheduler:
-    step_size: 40       # Giảm learning rate sau mỗi 40 epochs 
-    gamma: 0.1          # Giảm đi 10 lần (chia 10) 
+    step_size: 20       # Giảm learning rate sau mỗi 20 epochs 
+    gamma: 0.5          # Giảm đi 2 lần (chia 2) 
 
   loss:
-    # Loss Function = alpha * BCE + beta * Dice
-    alpha: 0.5          # Trọng số cho Binary Cross Entropy
+    # Loss Function = alpha * CE + beta * Dice
+    alpha: 0.5          # Trọng số cho Cross Entropy
     beta: 0.5           # Trọng số cho Dice Loss
     smooth: 1.0e-6      # Epsilon để tránh chia cho 0
+    class_weights: [0.1, 0.1, 0.8] # Trọng số của các class
 
   # Cấu hình lưu/kiểm tra
   save_interval: 10     # Lưu model sau mỗi 10 epochs

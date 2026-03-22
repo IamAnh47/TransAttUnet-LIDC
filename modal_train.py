@@ -110,7 +110,8 @@ def main(resume: str = None):
     """
     Cách chạy:
     1. Train mới: modal run -d modal_train.py::main
-    2. Resume:    modal run -d modal_train.py::main --resume /mnt/storage/outputs/checkpoints/last_checkpoint.pth
+    2. Stop : modal app list -> app ID -> modal app stop ap-hrd8ABR1bjJFFwEk5d2GzC
+    3. Resume:    modal run -d modal_train.py::main --resume /mnt/storage/outputs/checkpoints/last_checkpoint.pth
     """
     """Load volume
     tạo volume 

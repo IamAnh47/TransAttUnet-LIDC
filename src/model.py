@@ -119,82 +119,82 @@ class TransAttUnet(nn.Module):
         self.bilinear = bilinear
 
         # 1. Encoder
-        self.inc = DoubleConv(n_channels, 64)
-        self.down1 = Down(64, 128)
-        self.down2 = Down(128, 256)
-        self.down3 = Down(256, 512)
+        self.inc = DoubleConv(n_channels, 32)
+        self.down1 = Down(32, 64)
+        self.down2 = Down(64, 128)
+        self.down3 = Down(128, 256)
         self.down4_conv = nn.Sequential(
             nn.MaxPool2d(2),
-            DoubleConv(512, 1024)
+            DoubleConv(256, 512)
         )
 
         # 2. Bridge
-        self.saa_bridge = SelfAwareAttention(in_channels=1024)
+        self.saa_bridge = SelfAwareAttention(in_channels=512)
 
         # 3. Decoder (Multi-scale Dense Connections)
         # SỬ DỤNG UpFlexible để kiểm soát chính xác Channels
 
-        # Up1: Input từ Bridge (1024) + Skip x4 (512)
-        self.up1 = UpFlexible(in_ch=1024, skip_ch=512, out_ch=512, bilinear=bilinear)
+        # Up1: Input từ Bridge (512) + Skip x4 (256)
+        self.up1 = UpFlexible(in_ch=512, skip_ch=256, out_ch=256, bilinear=bilinear)
 
         # Up2:
-        #   Input Vertical = x6_cat = x5_scale (1024) + x6 (512) = 1536 channels
+        #   Input Vertical = x6_cat = x5_scale (512) + x6 (256) = 768 channels
         #   Skip x3 = 256
-        self.up2 = UpFlexible(in_ch=1536, skip_ch=256, out_ch=256, bilinear=bilinear)
+        self.up2 = UpFlexible(in_ch=768, skip_ch=128, out_ch=128, bilinear=bilinear)
 
         # Up3:
-        #   Input Vertical = x7_cat = x6_scale (512) + x7 (256) = 768 channels
-        #   (Lưu ý: x6_scale lấy từ output của up1 là 512)
-        #   Skip x2 = 128
-        self.up3 = UpFlexible(in_ch=768, skip_ch=128, out_ch=128, bilinear=bilinear)
+        #   Input Vertical = x7_cat = x6_scale (256) + x7 (128) = 384 channels
+        #   (Lưu ý: x6_scale lấy từ output của up1 là 256)
+        #   Skip x2 = 64
+        self.up3 = UpFlexible(in_ch=384, skip_ch=64, out_ch=64, bilinear=bilinear)
 
         # Up4:
-        #   Input Vertical = x8_cat = x7_scale (256) + x8 (128) = 384 channels
-        #   Skip x1 = 64
-        self.up4 = UpFlexible(in_ch=384, skip_ch=64, out_ch=64, bilinear=bilinear)
+        #   Input Vertical = x8_cat = x7_scale (128) + x8 (64) = 192 channels
+        #   Skip x1 = 32
+        self.up4 = UpFlexible(in_ch=192, skip_ch=32, out_ch=32, bilinear=bilinear)
 
         # 4. Output Layer
-        #   Input = x9_cat = x8_scale (128) + x9 (64) = 192 channels
-        self.outc = nn.Conv2d(192, n_classes, kernel_size=1)
+        #   Input = x9_cat = x8_scale (64) + x9 (32) = 96 channels
+        self.outc = nn.Conv2d(96, n_classes, kernel_size=1)
 
     def forward(self, x):
         # --- Encoding ---
-        x1 = self.inc(x)  # 64
-        x2 = self.down1(x1)  # 128
-        x3 = self.down2(x2)  # 256
-        x4 = self.down3(x3)  # 512
-        x5 = self.down4_conv(x4)  # 1024
+        x1 = self.inc(x)  # 32
+        x2 = self.down1(x1)  # 64
+        x3 = self.down2(x2)  # 128
+        x4 = self.down3(x3)  # 256
+        x5 = self.down4_conv(x4)  # 512
 
         # --- Bridge ---
-        x5_att = self.saa_bridge(x5)  # 1024
+        x5_att = self.saa_bridge(x5)  # 512
 
         # --- Decoding (Dense Logic) ---
 
         # Block 1
-        x6 = self.up1(x5_att, x4)  # Out: 512
+        x6 = self.up1(x5_att, x4)  # Out: 256
 
-        # Dense connect 1: Bridge(1024) + x6(512) -> 1536
+        # Dense connect 1: Bridge(512) + x6(256) -> 768
         x5_scale = F.interpolate(x5_att, size=x6.shape[2:], mode='bilinear', align_corners=True)
         x6_cat = torch.cat((x5_scale, x6), 1)
 
         # Block 2
-        x7 = self.up2(x6_cat, x3)  # Out: 256
+        x7 = self.up2(x6_cat, x3)  # Out: 128
 
-        # Dense connect 2: x6(512) + x7(256) -> 768
+        # Dense connect 2: x6(256) + x7(128) -> 384
         x6_scale = F.interpolate(x6, size=x7.shape[2:], mode='bilinear', align_corners=True)
         x7_cat = torch.cat((x6_scale, x7), 1)
 
         # Block 3
-        x8 = self.up3(x7_cat, x2)  # Out: 128
+        x8 = self.up3(x7_cat, x2)  # Out: 64
 
-        # Dense connect 3: x7(256) + x8(128) -> 384
+        # Dense connect 3: x7(128) + x8(64) -> 192
         x7_scale = F.interpolate(x7, size=x8.shape[2:], mode='bilinear', align_corners=True)
         x8_cat = torch.cat((x7_scale, x8), 1)
 
         # Block 4
-        x9 = self.up4(x8_cat, x1)  # Out: 64
+        x9 = self.up4(x8_cat, x1)  # Out: 32
 
-        # Dense connect 4: x8(128) + x9(64) -> 192
+        # Dense connect 4: x8(64) + x9(32) -> 96
         x8_scale = F.interpolate(x8, size=x9.shape[2:], mode='bilinear', align_corners=True)
         x9_cat = torch.cat((x8_scale, x9), 1)
 

@@ -6,6 +6,7 @@ import random
 
 
 def load_config(config_path):
+    """Load YAML config"""
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config
@@ -21,42 +22,50 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
-def calculate_metrics(pred_logits, target, threshold=0.5):
+def calculate_metrics(pred_logits, target, num_classes=3):
     """
-    Tính các chỉ số đánh giá: Dice, IoU, Accuracy, Precision, Recall.
-    Input:
-        pred_logits: (Batch, 1, H, W) - chưa qua sigmoid
-        target: (Batch, 1, H, W) - binary mask (0, 1)
+    Tính các metric: dice, iou, precision, recall, accuracy
+    pred_logits: [B, C, H, W]
+    target: [B, H, W] hoặc [B, 1, H, W]
     """
-    # 1. Chuyển Logits thành Binary Mask
-    pred_prob = torch.sigmoid(pred_logits)
-    pred_mask = (pred_prob > threshold).float()
+    preds = torch.argmax(pred_logits, dim=1)
 
-    # 2. Flatten để tính toán
-    pred_flat = pred_mask.view(-1)
-    target_flat = target.view(-1)
+    # Nếu target có channel singleton, loại bỏ
+    if target.dim() == 4 and target.size(1) == 1:
+        target = target.squeeze(1)
 
-    # 3. Tính TP, FP, TN, FN
-    TP = (pred_flat * target_flat).sum()
-    TN = ((1 - pred_flat) * (1 - target_flat)).sum()
-    FP = (pred_flat * (1 - target_flat)).sum()
-    FN = ((1 - pred_flat) * target_flat).sum()
+    smooth = 1e-6
 
-    smooth = 1e-6  # Tránh chia cho 0
+    dice_list = []
+    iou_list = []
+    precision_list = []
+    recall_list = []
 
-    # 4. Công thức metrics (theo bài báo)
-    dice = (2 * TP + smooth) / (2 * TP + FP + FN + smooth)
-    iou = (TP + smooth) / (TP + FP + FN + smooth)
-    accuracy = (TP + TN + smooth) / (TP + TN + FP + FN + smooth)
-    recall = (TP + smooth) / (TP + FN + smooth)
-    precision = (TP + smooth) / (TP + FP + smooth)
+    for cls in range(num_classes):
+        pred_c = (preds == cls).float()
+        target_c = (target == cls).float()
+
+        TP = (pred_c * target_c).sum()
+        FP = (pred_c * (1 - target_c)).sum()
+        FN = ((1 - pred_c) * target_c).sum()
+
+        dice = (2 * TP + smooth) / (2 * TP + FP + FN + smooth)
+        iou = (TP + smooth) / (TP + FP + FN + smooth)
+        precision = (TP + smooth) / (TP + FP + smooth)
+        recall = (TP + smooth) / (TP + FN + smooth)
+
+        dice_list.append(dice)
+        iou_list.append(iou)
+        precision_list.append(precision)
+        recall_list.append(recall)
 
     return {
-        "dice": dice.item(),
-        "iou": iou.item(),
-        "accuracy": accuracy.item(),
-        "recall": recall.item(),
-        "precision": precision.item()
+        "dice": torch.mean(torch.stack(dice_list)).item(),
+        "dice_per_class": [d.item() for d in dice_list],
+        "iou": torch.mean(torch.stack(iou_list)).item(),
+        "precision": torch.mean(torch.stack(precision_list)).item(),
+        "recall": torch.mean(torch.stack(recall_list)).item(),
+        "accuracy": (preds == target).float().mean().item()
     }
 
 

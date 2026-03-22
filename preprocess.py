@@ -10,6 +10,7 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pylidc.utils import consensus
 import pylidc as pl
+import uuid
 
 # Import loader
 from src.dicom_loader import DicomLoader
@@ -35,6 +36,28 @@ def normalize_hu(image, window_center, window_width):
     return image.astype(np.float32)
 
 
+# Phân đoạn phổi
+def segment_lung_mask(volume):
+    # Phân đoạn phổi dựa trên HU
+    binary = volume < -320
+
+    binary = scipy.ndimage.binary_opening(binary, structure=np.ones((3, 3, 3)))
+    binary = scipy.ndimage.binary_closing(binary, structure=np.ones((5, 5, 5)))
+
+    labels, num = scipy.ndimage.label(binary)
+    if num == 0:
+        return np.zeros_like(volume, dtype=np.uint8)
+
+    sizes = scipy.ndimage.sum(binary, labels, range(1, num + 1))
+    largest = np.argsort(sizes)[-2:] + 1
+
+    mask = np.zeros_like(binary)
+    for l in largest:
+        mask[labels == l] = 1
+
+    return mask.astype(np.uint8)
+
+
 def process_patient_segmentation(args):
     # Bung nén tham số từ main truyền vào
     pid, raw_dir, processed_dir, seg_params = args
@@ -51,6 +74,8 @@ def process_patient_segmentation(args):
         if vol is None:
             stats["error"] = "Load Failed"
             return stats
+
+        lung_mask = segment_lung_mask(vol)
 
         # Sử dụng tham số từ config
         vol_norm = normalize_hu(vol, seg_params['window_center'], seg_params['window_width'])
@@ -74,7 +99,13 @@ def process_patient_segmentation(args):
             for z in range(z_start, z_stop):
                 slice_img = vol_norm[z, :, :]
 
+                # multi-class mask
+                # 0 = background
+                # 1 = lung
+                # 2 = nodule
                 slice_mask = np.zeros_like(slice_img, dtype=np.uint8)
+
+                slice_mask[lung_mask[z] > 0] = 1
 
                 z_local = z - z_start
                 mask_slice_roi = mask_roi[:, :, z_local]
@@ -96,10 +127,14 @@ def process_patient_segmentation(args):
                 roi_y_s = y_s - y_start
                 roi_y_e = roi_y_s + (y_e - y_s)
 
-                slice_mask[x_s:x_e, y_s:y_e] = mask_slice_roi[roi_x_s:roi_x_e, roi_y_s:roi_y_e].astype(np.uint8)
+                roi = mask_slice_roi[roi_x_s:roi_x_e, roi_y_s:roi_y_e]
 
-                if np.sum(slice_mask) > 0:
-                    file_id = f"{pid}_nodule{i}_slice{z}"
+                if roi.shape == (x_e - x_s, y_e - y_s):
+                    slice_mask[x_s:x_e, y_s:y_e][roi > 0] = 2
+
+                if np.sum(slice_mask == 2) > 0 or random.random() < 0.05:
+                    file_id = f"{pid}_nodule{i}_slice{z}_{uuid.uuid4().hex[:6]}"
+
                     np.save(os.path.join(img_dir, f"{file_id}.npy"), slice_img)
                     np.save(os.path.join(mask_dir, f"{file_id}.npy"), slice_mask)
                     stats["slices"] += 1
@@ -113,7 +148,8 @@ def process_patient_segmentation(args):
             stats["error"] = "No valid nodules"
 
     except Exception as e:
-        stats["error"] = str(e)
+        import traceback
+        stats["error"] = traceback.format_exc()
 
     return stats
 
@@ -179,9 +215,12 @@ def main():
                     total_slices += res["slices"]
                     done_pids.add(res["pid"])
 
-                # Lưu log định kỳ
+                # Lưu log định kỳ (safe write)
                 if len(done_pids) % 10 == 0:
-                    with open(processed_log, "w") as f: json.dump(list(done_pids), f)
+                    tmp_path = processed_log + ".tmp"
+                    with open(tmp_path, "w") as f:
+                        json.dump(list(done_pids), f)
+                    os.replace(tmp_path, processed_log)
 
         # Lưu log cuối cùng
         with open(processed_log, "w") as f:
