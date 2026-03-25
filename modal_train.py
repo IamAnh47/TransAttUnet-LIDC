@@ -28,41 +28,45 @@ volume = modal.Volume.from_name("storage", create_if_missing=True)
     volumes={"/mnt/storage": volume},
     timeout=86400
 )
+
 def train_remote(resume_path: str = None):
     import subprocess
     import os
     import sys
 
-    # Thiết lập môi trường
     env = os.environ.copy()
     env["PYTHONPATH"] = REMOTE_ROOT
     os.chdir(REMOTE_ROOT)
 
-    print(" Đang khởi động Training trên Modal GPU...")
+    log_dir = "/mnt/storage/logs"
+    os.makedirs(log_dir, exist_ok=True)
 
-    # Xây dựng lệnh chạy
+    log_file = os.path.join(log_dir, "train.log")
+
+    print(f"📄 Log sẽ lưu tại: {log_file}")
+
     cmd = [
         "python", "train.py",
         "--config", "configs/config.yaml"
     ]
 
-    # Nếu có tham số resume, thêm vào lệnh chạy
     if resume_path:
-        print(f"Khôi phục huấn luyện từ checkpoint: {resume_path}")
         cmd.extend(["--resume", resume_path])
 
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=env
-    )
+    with open(log_file, "a") as f:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env
+        )
 
-    for line in process.stdout:
-        print(line, end="")
+        for line in process.stdout:
+            print(line, end="")   # vẫn hiện trên console
+            f.write(line)         # ghi vào file
 
-    process.wait()
+        process.wait()
 
 # ==================== INFERENCE / EVALUATION ====================
 @app.function(
