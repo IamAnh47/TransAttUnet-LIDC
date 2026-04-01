@@ -10,3 +10,4 @@ tqdm
 setuptools
 torch
 torchvision
+albumentations

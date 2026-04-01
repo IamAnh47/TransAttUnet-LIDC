@@ -3,6 +3,58 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class TransformerBottleneck(nn.Module):
+    def __init__(self, in_channels, num_heads=8, hidden_dim=1024, dropout=0.15):
+        super().__init__()
+        self.num_heads = num_heads
+        self.in_channels = in_channels
+
+        # Linear projections cho Query, Key, Value
+        self.qkv = nn.Linear(in_channels, in_channels * 3)
+        self.proj = nn.Linear(in_channels, in_channels)
+
+        # Feed Forward Network (FFN) như bài báo đề xuất
+        self.ffn = nn.Sequential(
+            nn.LayerNorm(in_channels),
+            nn.Linear(in_channels, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, in_channels),
+            nn.Dropout(dropout)
+        )
+        self.norm1 = nn.LayerNorm(in_channels)
+        self.norm2 = nn.LayerNorm(in_channels)
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        N = H * W
+
+        # 1. Patch Tokenization (Đưa về chuỗi 1D: B, N, C)
+        x_flat = x.view(B, C, N).permute(0, 2, 1)
+
+        # 2. Multi-Head Self Attention
+        # Tính Q, K, V
+        qkv = self.qkv(self.norm1(x_flat)).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # Kích thước mỗi cái: (B, Heads, N, Head_dim)
+
+        # Tính Attention Score: (Q * K^T) / sqrt(d_k)
+        attn_scores = (q @ k.transpose(-2, -1)) * (1.0 / (k.shape[-1] ** 0.5))
+        attn_weights = F.softmax(attn_scores, dim=-1)  # Kích thước: (B, Heads, N, N)
+
+        # Nhân với Value
+        x_attn = (attn_weights @ v).transpose(1, 2).reshape(B, N, C)
+        x_attn = self.proj(x_attn)
+
+        # 3. Residual Connection & FFN
+        x_flat = x_flat + x_attn
+        x_flat = x_flat + self.ffn(self.norm2(x_flat))
+
+        # 4. Reshape lại thành ảnh (B, C, H, W)
+        out = x_flat.permute(0, 2, 1).view(B, C, H, W)
+
+        return out, attn_weights
+
+
 # --- CÁC KHỐI CƠ BẢN (BUILDING BLOCKS) ---
 
 class DoubleConv(nn.Module):
@@ -111,6 +163,9 @@ class SelfAwareAttention(nn.Module):
 
 # --- KIẾN TRÚC CHÍNH TRANSATTUNET (DENSE VERSION) ---
 
+
+# --- KIẾN TRÚC CHÍNH TRANSATTUNET (DENSE VERSION + TRANSFORMER BOTTLENECK) ---
+
 class TransAttUnet(nn.Module):
     def __init__(self, n_channels=1, n_classes=1, bilinear=True):
         super(TransAttUnet, self).__init__()
@@ -129,6 +184,8 @@ class TransAttUnet(nn.Module):
         )
 
         # 2. Bridge
+        # --- THÊM TRANSFORMER BOTTLENECK Ở ĐÂY ---
+        self.transformer_bottleneck = TransformerBottleneck(in_channels=512)
         self.saa_bridge = SelfAwareAttention(in_channels=512)
 
         # 3. Decoder (Multi-scale Dense Connections)
@@ -144,7 +201,6 @@ class TransAttUnet(nn.Module):
 
         # Up3:
         #   Input Vertical = x7_cat = x6_scale (256) + x7 (128) = 384 channels
-        #   (Lưu ý: x6_scale lấy từ output của up1 là 256)
         #   Skip x2 = 64
         self.up3 = UpFlexible(in_ch=384, skip_ch=64, out_ch=64, bilinear=bilinear)
 
@@ -157,6 +213,10 @@ class TransAttUnet(nn.Module):
         #   Input = x9_cat = x8_scale (64) + x9 (32) = 96 channels
         self.outc = nn.Conv2d(96, n_classes, kernel_size=1)
 
+        # ----- DEEP SUPERVISION -----
+        self.ds_out1 = nn.Conv2d(128, n_classes, kernel_size=1)
+        self.ds_out2 = nn.Conv2d(64, n_classes, kernel_size=1)
+
     def forward(self, x):
         # --- Encoding ---
         x1 = self.inc(x)  # 32
@@ -166,7 +226,11 @@ class TransAttUnet(nn.Module):
         x5 = self.down4_conv(x4)  # 512
 
         # --- Bridge ---
-        x5_att = self.saa_bridge(x5)  # 512
+        # 1. Chạy qua Transformer Bottleneck (Bắt bản đồ Attention)
+        x5_trans, attn_weights = self.transformer_bottleneck(x5)
+
+        # 2. Chạy qua SAA (Tiếp tục xử lý đặc trưng)
+        x5_att = self.saa_bridge(x5_trans)  # 512
 
         # --- Decoding (Dense Logic) ---
 
@@ -198,5 +262,136 @@ class TransAttUnet(nn.Module):
         x8_scale = F.interpolate(x8, size=x9.shape[2:], mode='bilinear', align_corners=True)
         x9_cat = torch.cat((x8_scale, x9), 1)
 
-        logits = self.outc(x9_cat)
-        return logits
+        # --- Output ---
+        logits = self.outc(x9_cat)  # Ảnh chính xác nhất (kích thước gốc)
+
+        # ----- DEEP SUPERVISION LOGIC -----
+        if self.training:
+            # Nhánh phụ 1 (Từ block x7)
+            out_x7 = self.ds_out1(x7)
+            out_x7 = F.interpolate(out_x7, size=logits.shape[2:], mode='bilinear', align_corners=False)
+
+            # Nhánh phụ 2 (Từ block x8)
+            out_x8 = self.ds_out2(x8)
+            out_x8 = F.interpolate(out_x8, size=logits.shape[2:], mode='bilinear', align_corners=False)
+
+            # Trả về Dánh sách ảnh dự đoán VÀ Trọng số Attention
+            return [logits, out_x7, out_x8], attn_weights
+        else:
+            # Khi Inference/Test, VẪN TRẢ VỀ CẢ HAI để không phá vỡ logic tính Loss nếu đang Validate
+            return logits, attn_weights
+
+
+# class TransAttUnet(nn.Module):
+#     def __init__(self, n_channels=1, n_classes=1, bilinear=True):
+#         super(TransAttUnet, self).__init__()
+#         self.n_channels = n_channels
+#         self.n_classes = n_classes
+#         self.bilinear = bilinear
+#
+#         # 1. Encoder
+#         self.inc = DoubleConv(n_channels, 32)
+#         self.down1 = Down(32, 64)
+#         self.down2 = Down(64, 128)
+#         self.down3 = Down(128, 256)
+#         self.down4_conv = nn.Sequential(
+#             nn.MaxPool2d(2),
+#             DoubleConv(256, 512)
+#         )
+#
+#         # 2. Bridge
+#         self.saa_bridge = SelfAwareAttention(in_channels=512)
+#
+#         # 3. Decoder (Multi-scale Dense Connections)
+#         # SỬ DỤNG UpFlexible để kiểm soát chính xác Channels
+#
+#         # Up1: Input từ Bridge (512) + Skip x4 (256)
+#         self.up1 = UpFlexible(in_ch=512, skip_ch=256, out_ch=256, bilinear=bilinear)
+#
+#         # Up2:
+#         #   Input Vertical = x6_cat = x5_scale (512) + x6 (256) = 768 channels
+#         #   Skip x3 = 256
+#         self.up2 = UpFlexible(in_ch=768, skip_ch=128, out_ch=128, bilinear=bilinear)
+#
+#         # Up3:
+#         #   Input Vertical = x7_cat = x6_scale (256) + x7 (128) = 384 channels
+#         #   (Lưu ý: x6_scale lấy từ output của up1 là 256)
+#         #   Skip x2 = 64
+#         self.up3 = UpFlexible(in_ch=384, skip_ch=64, out_ch=64, bilinear=bilinear)
+#
+#         # Up4:
+#         #   Input Vertical = x8_cat = x7_scale (128) + x8 (64) = 192 channels
+#         #   Skip x1 = 32
+#         self.up4 = UpFlexible(in_ch=192, skip_ch=32, out_ch=32, bilinear=bilinear)
+#
+#         # 4. Output Layer
+#         #   Input = x9_cat = x8_scale (64) + x9 (32) = 96 channels
+#         self.outc = nn.Conv2d(96, n_classes, kernel_size=1)
+#
+#         # ----- DEEP SUPERVISION -----
+#         self.ds_out1 = nn.Conv2d(128, n_classes, kernel_size=1)
+#
+#         # Nhánh phụ 2 lấy từ block x8 (Đầu ra 64 channels)
+#         self.ds_out2 = nn.Conv2d(64, n_classes, kernel_size=1)
+#
+#     def forward(self, x):
+#         # --- Encoding ---
+#         x1 = self.inc(x)  # 32
+#         x2 = self.down1(x1)  # 64
+#         x3 = self.down2(x2)  # 128
+#         x4 = self.down3(x3)  # 256
+#         x5 = self.down4_conv(x4)  # 512
+#
+#         # --- Bridge ---
+#         x5_att = self.saa_bridge(x5)  # 512
+#
+#         # --- Decoding (Dense Logic) ---
+#
+#         # Block 1
+#         x6 = self.up1(x5_att, x4)  # Out: 256
+#
+#         # Dense connect 1: Bridge(512) + x6(256) -> 768
+#         x5_scale = F.interpolate(x5_att, size=x6.shape[2:], mode='bilinear', align_corners=True)
+#         x6_cat = torch.cat((x5_scale, x6), 1)
+#
+#         # Block 2
+#         x7 = self.up2(x6_cat, x3)  # Out: 128
+#
+#         # Dense connect 2: x6(256) + x7(128) -> 384
+#         x6_scale = F.interpolate(x6, size=x7.shape[2:], mode='bilinear', align_corners=True)
+#         x7_cat = torch.cat((x6_scale, x7), 1)
+#
+#         # Block 3
+#         x8 = self.up3(x7_cat, x2)  # Out: 64
+#
+#         # Dense connect 3: x7(128) + x8(64) -> 192
+#         x7_scale = F.interpolate(x7, size=x8.shape[2:], mode='bilinear', align_corners=True)
+#         x8_cat = torch.cat((x7_scale, x8), 1)
+#
+#         # Block 4
+#         x9 = self.up4(x8_cat, x1)  # Out: 32
+#
+#         # Dense connect 4: x8(64) + x9(32) -> 96
+#         x8_scale = F.interpolate(x8, size=x9.shape[2:], mode='bilinear', align_corners=True)
+#         x9_cat = torch.cat((x8_scale, x9), 1)
+#
+#         # --- Output ---
+#         logits = self.outc(x9_cat)  # Ảnh chính xác nhất (kích thước gốc)
+#
+#         # ----- DEEP SUPERVISION LOGIC -----
+#         if self.training:
+#             # Nhánh phụ 1 (Từ block x7)
+#             out_x7 = self.ds_out1(x7)
+#             # Phóng to x7 lên bằng kích thước logits
+#             out_x7 = F.interpolate(out_x7, size=logits.shape[2:], mode='bilinear', align_corners=False)
+#
+#             # Nhánh phụ 2 (Từ block x8)
+#             out_x8 = self.ds_out2(x8)
+#             # Phóng to x8 lên bằng kích thước logits
+#             out_x8 = F.interpolate(out_x8, size=logits.shape[2:], mode='bilinear', align_corners=False)
+#
+#             # Khi train, trả về cả 3 tấm ảnh để tính Loss cộng dồn
+#             return [logits, out_x7, out_x8]
+#         else:
+#             # Khi validate/test/inference, chỉ cần trả về ảnh chính xác nhất
+#             return logits

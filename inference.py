@@ -3,6 +3,8 @@ import torch
 import argparse
 import yaml
 import numpy as np
+import pydensecrf.densecrf as dcrf
+from pydensecrf.utils import unary_from_softmax, create_pairwise_bilateral, create_pairwise_gaussian
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -38,7 +40,7 @@ def save_visualization(image, mask, pred, save_path, dice_score):
 
     # 3. Prediction (Overlay lên ảnh gốc cho dễ nhìn)
     # Mask dự đoán màu đỏ bán trong suốt
-    masked_pred = np.ma.masked_where(pred_np == 0, pred_np)
+    masked_pred = np.ma.masked_where(pred_np != 2, pred_np)
     axes[2].imshow(img_np, cmap='gray')
     axes[2].imshow(masked_pred, cmap='autumn', alpha=0.6)
     axes[2].set_title(f"Prediction (Dice: {dice_score:.4f})")
@@ -47,6 +49,75 @@ def save_visualization(image, mask, pred, save_path, dice_score):
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close(fig)
+
+
+def apply_crf(img_numpy, prob_numpy, num_classes=3):
+    """
+    img_numpy: Ảnh gốc kích thước (H, W), giá trị đã chuẩn hóa 0-1
+    prob_numpy: Xác suất dự đoán từ model kích thước (C, H, W)
+    """
+    C, H, W = prob_numpy.shape
+
+    # 1. Chuyển ảnh CT (grayscale) sang dạng RGB (3 kênh giống nhau) và uint8 vì pydensecrf yêu cầu thế
+    if img_numpy.max() <= 1.0:
+        img_uint8 = (img_numpy * 255).astype(np.uint8)
+    else:
+        img_uint8 = img_numpy.astype(np.uint8)
+    img_rgb = np.stack([img_uint8] * 3, axis=-1)
+    img_rgb = np.ascontiguousarray(img_rgb)
+
+    # 2. Xử lý xác suất (Unary potential)
+    prob_numpy = np.ascontiguousarray(prob_numpy)
+    unary = unary_from_softmax(prob_numpy)
+    unary = np.ascontiguousarray(unary)
+
+    # 3. Khởi tạo CRF
+    d = dcrf.DenseCRF2D(W, H, C)
+    d.setUnaryEnergy(unary)
+
+    # 4. Thêm điều kiện Không gian (Smoothness) - Xóa nhiễu vụn vặt
+    d.addPairwiseGaussian(sxy=(3, 3), compat=3, kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
+
+    # 5. Thêm điều kiện Cạnh/Viền (Bilateral) - Đây là ma thuật kéo viền bám vào gai khối u!
+    # sxy: Khoảng cách không gian, srgb: Độ nhạy với sự thay đổi màu/độ sáng của pixel
+    d.addPairwiseBilateral(sxy=(5, 5), srgb=(13, 13, 13), rgbim=img_rgb, compat=10,
+                           kernel=dcrf.DIAG_KERNEL, normalization=dcrf.NORMALIZE_SYMMETRIC)
+
+    # 6. Chạy suy luận CRF (5 bước lặp là đủ hội tụ)
+    Q = d.inference(5)
+
+    # 7. Lấy class có xác suất cao nhất sau khi tinh chỉnh
+    res = np.argmax(Q, axis=0).reshape((H, W))
+
+    return res
+
+def tta_predict(model, images):
+    """
+    Test-Time Augmentation (TTA)
+    (Đã cập nhật để tương thích với model có Attention Weights)
+    """
+    # Unpack tuple: Lấy logits, bỏ qua attn_weights bằng dấu '_'
+    logits_orig, _ = model(images)
+
+    # Horizontal
+    images_hf = torch.flip(images, dims=[3])
+    logits_hf, _ = model(images_hf)
+    logits_hf = torch.flip(logits_hf, dims=[3])  # Lật mask dự đoán ngược lại
+
+    # Vertical
+    images_vf = torch.flip(images, dims=[2])
+    logits_vf, _ = model(images_vf)
+    logits_vf = torch.flip(logits_vf, dims=[2])  # Lật mask dự đoán ngược lại
+
+    # hyper
+    images_hvf = torch.flip(images, dims=[2, 3])
+    logits_hvf, _ = model(images_hvf)
+    logits_hvf = torch.flip(logits_hvf, dims=[2, 3])  # Lật mask dự đoán ngược lại
+
+    # avg
+    avg_logits = (logits_orig + logits_hf + logits_vf + logits_hvf) / 4.0
+
+    return avg_logits
 
 
 def evaluate(model, loader, device, result_dir, vis_count=20):
@@ -64,57 +135,98 @@ def evaluate(model, loader, device, result_dir, vis_count=20):
     # CSV file để lưu kết quả từng ảnh
     csv_file = open(os.path.join(result_dir, "test_results.csv"), mode='w', newline='')
     writer = csv.writer(csv_file)
-    writer.writerow(["Filename", "Dice", "IoU", "Recall", "Precision", "Accuracy"])
+    writer.writerow(["Filename", "Nodule_Dice", "IoU", "Recall", "Precision", "Accuracy"])
 
     vis_dir = os.path.join(result_dir, "visualizations")
     os.makedirs(vis_dir, exist_ok=True)
 
     print("Đang chạy đánh giá trên tập Test...")
 
-    count_vis = 0
+    # --- KHỞI TẠO LIST LƯU KẾT QUẢ ĐỂ SORT ---
+    results_list = []
 
     with torch.no_grad():
-        # Dùng enumerate để lấy index, nhưng dataset của chúng ta trả về (image, mask)
-        # Để lấy tên file, ta cần sửa Dataset một chút hoặc chấp nhận không có tên file trong CSV
-        # Tuy nhiên, TransAttUnetDataset hiện tại chưa trả về filename.
-        # Tạm thời ta dùng index.
-
         pbar = tqdm(loader, desc="Testing")
         for i, (images, masks) in enumerate(pbar):
             images = images.to(device)
             masks = masks.to(device)
 
-            # Forward
-            logits = model(images)
+            # Forward với TTA
+            logits = tta_predict(model, images)
+            probs = torch.softmax(logits, dim=1)
 
-            # Tính metrics
-            scores = calculate_metrics(logits, masks)
+            # 2. ÁP DỤNG CRF LÀM SẮC NÉT ĐƯỜNG VIỀN
+            crf_preds = []
+            for b in range(images.size(0)):
+                img_np = images[b, 0].cpu().numpy()
+                prob_np = probs[b].cpu().numpy()
+
+                pred_crf = apply_crf(img_np, prob_np, num_classes=3)
+                crf_preds.append(pred_crf)
+
+            crf_tensor = torch.tensor(np.stack(crf_preds), device=device, dtype=torch.long)
+            crf_logits = torch.nn.functional.one_hot(crf_tensor, num_classes=3).permute(0, 3, 1, 2).float() * 10.0
+
+            # 4. Tính metrics
+            scores = calculate_metrics(crf_logits, masks)
+
+            # LẤY RIÊNG CHỈ SỐ CỦA KHỐI U (CLASS 2)
+            dice_nodule = scores['dice_per_class'][2]
+            scores['dice'] = dice_nodule
 
             # Update average meters
             for k, v in scores.items():
+                if k == 'dice_per_class' or k == 'iou_per_class':
+                    continue
+                if k not in metrics_meters:
+                    metrics_meters[k] = AverageMeter()
                 metrics_meters[k].update(v, images.size(0))
 
             # Ghi vào CSV
-            # Giả sử batch_size = 1 cho inference để dễ xử lý từng ảnh
-            writer.writerow([f"Test_Sample_{i}", scores['dice'], scores['iou'],
+            writer.writerow([f"Test_Sample_{i}", dice_nodule, scores['iou'],
                              scores['recall'], scores['precision'], scores['accuracy']])
 
-            # Lưu ảnh visualize (Chỉ lưu vis_count ảnh đầu tiên hoặc ảnh có Dice > 0 để đỡ tốn chỗ)
-            # Logic: Lưu 10 ảnh đầu tiên + 10 ảnh có Dice > 0.5 tiếp theo
-            pred_mask = (torch.sigmoid(logits) > 0.5).float()
+            # --- CHUẨN BỊ DỮ LIỆU ĐỂ VISUALIZE ---
+            pred_mask = crf_tensor.float()
 
-            # Chỉ visualize nếu batch_size = 1 (để code đơn giản)
-            if images.size(0) == 1 and count_vis < vis_count:
-                # Chỉ lưu những ảnh có nốt phổi (GT có pixel > 0) hoặc Model đoán ra cái gì đó
-                if masks.sum() > 0 or pred_mask.sum() > 0:
-                    save_path = os.path.join(vis_dir, f"result_{i}_dice_{scores['dice']:.3f}.png")
-                    save_visualization(images[0], masks[0], pred_mask[0], save_path, scores['dice'])
-                    count_vis += 1
+            if images.size(0) == 1:
+                has_nodule_gt = (masks == 2).sum() > 0
+                has_nodule_pred = (pred_mask == 2).sum() > 0
+
+                # Chỉ đưa vào danh sách nếu ảnh đó thực sự có u (ở nhãn gốc hoặc dự đoán)
+                if has_nodule_gt or has_nodule_pred:
+                    results_list.append({
+                        'index': i,
+                        'dice': float(dice_nodule),
+                        # clone và đưa về cpu để tránh tràn RAM GPU
+                        'image': images[0].cpu().clone(),
+                        'mask': masks[0].cpu().clone(),
+                        'pred': pred_mask[0].cpu().clone()
+                    })
 
     csv_file.close()
 
-    return {k: v.avg for k, v in metrics_meters.items()}
+    # ==========================================================
+    # LỌC VÀ LƯU TOP 20 TỐT NHẤT & TOP 20 TỆ NHẤT
+    # ==========================================================
+    print("\nĐang xuất ảnh visualizations (20 Tốt nhất & 20 Tệ nhất)...")
 
+    # Sắp xếp danh sách từ Dice thấp nhất -> Dice cao nhất
+    results_list.sort(key=lambda x: x['dice'])
+
+    num_to_save = min(vis_count, len(results_list))
+
+    # 1. Lưu Top Tệ nhất (Đầu danh sách)
+    for rank, item in enumerate(results_list[:num_to_save]):
+        save_path = os.path.join(vis_dir, f"WORST_{rank + 1}_idx_{item['index']}_Dice_{item['dice']:.4f}.png")
+        save_visualization(item['image'], item['mask'], item['pred'], save_path, item['dice'])
+
+    # 2. Lưu Top Tốt nhất (Cuối danh sách, duyệt ngược lại để lấy từ 1.0 xuống)
+    for rank, item in enumerate(reversed(results_list[-num_to_save:])):
+        save_path = os.path.join(vis_dir, f"BEST_{rank + 1}_idx_{item['index']}_Dice_{item['dice']:.4f}.png")
+        save_visualization(item['image'], item['mask'], item['pred'], save_path, item['dice'])
+
+    return {k: v.avg for k, v in metrics_meters.items()}
 
 def main():
     parser = argparse.ArgumentParser()
@@ -122,6 +234,7 @@ def main():
     parser.add_argument("--model_path", type=str, default=None,
                         help="Đường dẫn file .pth (mặc định lấy best_model.pth trong output)")
     parser.add_argument("--vis_num", type=int, default=50, help="Số lượng ảnh muốn lưu visualize")
+    parser.add_argument("--save_dir", type=str, default="/mnt/storage/results_roi", help="Thư mục lưu kết quả trên Modal Volume")
     args = parser.parse_args()
 
     # 1. Load Config
@@ -139,13 +252,13 @@ def main():
         return
 
     # 2. Setup Output Dir
-    RESULT_DIR = "results"
+    RESULT_DIR = args.save_dir
     os.makedirs(RESULT_DIR, exist_ok=True)
 
     # 3. Load Data (Tập Test)
     test_ds = TransAttUnetDataset(
-        cfg['paths']['processed_data'],
-        cfg['paths']['split_file'],
+        cfg['paths']['modal_processed_data'],
+        cfg['paths']['modal_split_file'],
         mode='test'
     )
 

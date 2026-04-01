@@ -11,12 +11,33 @@ app = modal.App("transattunet-lidc-training")
 # 2. Cấu hình môi trường chạy
 REMOTE_ROOT = "/root/project"
 image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .add_local_dir(".", remote_path=REMOTE_ROOT, copy=True,
-                   ignore=ignore_patterns)
-    .apt_install("libgl1-mesa-glx", "libglib2.0-0")
+    # 1. Image nền với CUDA 12.1 và NVCC
+    modal.Image.from_registry("nvidia/cuda:12.1.1-devel-ubuntu22.04", add_python="3.11")
+
+    # 2. Cài tool cơ bản, BẮT BUỘC có g++
+    .apt_install("libgl1-mesa-glx", "libglib2.0-0", "git", "build-essential", "g++", "gcc")
+
+    # 3. Cài các dependency quan trọng trước tiên
+    .pip_install("numpy", "packaging", "ninja", "wheel")
+
+    # 4. Ép buộc cài đúng PyTorch 2.4.0 + cu121
+    .pip_install("torch==2.4.0", "torchvision==0.19.0", index_url="https://download.pytorch.org/whl/cu121")
+
+    # 5. CHÌA KHÓA: Ép biến môi trường CC và CXX trỏ thẳng vào gcc và g++
+    .env({"CC": "gcc", "CXX": "g++"})
+
+    # 6. Cài causal-conv1d và mamba-ssm (cờ --no-build-isolation vẫn giữ nguyên)
+    # .run_commands(
+    #     "pip install causal-conv1d>=1.2.0 --no-build-isolation",
+    #     "pip install mamba-ssm --no-build-isolation"
+    # )
+
+    # 7. Các package còn lại
+    .pip_install("pyyaml", "tqdm", "scikit-learn", "scipy", "git+https://github.com/lucasb-eyer/pydensecrf.git")
     .pip_install_from_requirements("requirements.txt")
-    .pip_install("pyyaml", "tqdm", "scikit-learn", "scipy")
+    .pip_install("pydensecrf")
+
+    .add_local_dir(".", remote_path=REMOTE_ROOT, ignore=ignore_patterns, copy=True)
 )
 
 volume = modal.Volume.from_name("storage", create_if_missing=True)
@@ -65,8 +86,11 @@ def train_remote(resume_path: str = None):
         for line in process.stdout:
             print(line, end="")   # vẫn hiện trên console
             f.write(line)         # ghi vào file
-
+            f.flush()
+            if "Epoch" in line or "Saved" in line:
+                volume.commit()
         process.wait()
+        volume.commit()
 
 # ==================== INFERENCE / EVALUATION ====================
 @app.function(
@@ -98,7 +122,7 @@ def evaluate_remote(
         "--config", config_path,
         "--model_path", model_path,
         "--vis_num", str(vis_num),
-        "--save_dir", volume_output_dir  # <--- TRUYỀN ĐƯỜNG DẪN VOLUME VÀO ĐÂY
+        "--save_dir", volume_output_dir
     ]
 
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
@@ -116,12 +140,12 @@ def main(resume: str = None):
     1. Train mới: modal run -d modal_train.py::main
     2. Stop : modal app list -> app ID -> modal app stop ap-hrd8ABR1bjJFFwEk5d2GzC
     3. Resume:    modal run -d modal_train.py::main --resume /mnt/storage/outputs/checkpoints/last_checkpoint.pth
-    """
-    """Load volume
+
+    Load volume
     tạo volume 
     modal volume create storage
     # Upload folder data đã xử lý lên Volume
-    modal volume put storage "D:\Workspace\TransAttUnet-LIDC\data\processed" /data/processed
+    modal volume put storage "\data\processed" /data/processed
     """
     train_remote.remote(resume_path=resume)
 
@@ -141,7 +165,7 @@ def evaluate(
     Chạy evaluation/inference trên tập test.
 
     Ví dụ sử dụng:
-    modal run modal_train.py::evaluate --model-path /mnt/storage/outputs/checkpoints/best_model.pth --vis-num 100
+    modal run -d modal_train.py::evaluate --model-path /mnt/storage/outputs/checkpoints/best_model.pth --vis-num 100
     """
     evaluate_remote.remote(
         model_path=model_path,

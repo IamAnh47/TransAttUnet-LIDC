@@ -4,7 +4,7 @@ project:
   version: "1.0"
 
 paths:
-  raw_data: "data/raw"
+  raw_data: "data/raw/LIDC-IDRI"
   # Đường dẫn đến dữ liệu đã preprocess (chứa subfolder images/ và masks/)
   processed_data: "data/processed"
 
@@ -21,7 +21,7 @@ paths:
   checkpoint_dir: "/mnt/storage/outputs/checkpoints"
 
 data:
-  image_size: 512       # Kích thước ảnh chuẩn theo bài báo
+  image_size: 128       # Kích thước ảnh chuẩn theo bài báo
   in_channels: 1        # Ảnh CT phổi là grayscale (1 kênh)
   num_classes: 3        # Bài toán 3 lớp (Nodule, vùng phổi và Background)
   num_workers: 4        # Số luồng load dữ liệu
@@ -48,9 +48,9 @@ model:
 
 train:
   # Các siêu tham số (Hyperparameters) theo bài báo
-  epochs: 100           # Tổng số vòng train 
+  epochs: 200           # Tổng số vòng train
   batch_size: 8         # Batch size nhỏ do Transformer tốn bộ nhớ
-  
+  k_fold: 5
   optimizer:
     name: "AdamW"
     lr: 0.0001
@@ -62,8 +62,9 @@ train:
 
   loss:
     # Loss Function = alpha * CE + beta * Dice
-    alpha: 0.5          # Trọng số cho Cross Entropy
-    beta: 0.5           # Trọng số cho Dice Loss
+    alpha: 0.3          # Trọng số cho Cross Entropy
+    beta: 0.7           # Trọng số cho Dice Loss
+    gamma: 0.75
     smooth: 1.0e-6      # Epsilon để tránh chia cho 0
     class_weights: [0.1, 0.1, 0.8] # Trọng số của các class
 

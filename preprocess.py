@@ -130,14 +130,51 @@ def process_patient_segmentation(args):
                 roi = mask_slice_roi[roi_x_s:roi_x_e, roi_y_s:roi_y_e]
 
                 if roi.shape == (x_e - x_s, y_e - y_s):
-                    slice_mask[x_s:x_e, y_s:y_e][roi > 0] = 2
+                    temp_view = slice_mask[x_s:x_e, y_s:y_e]
+                    temp_view[roi > 0] = 2
 
-                if np.sum(slice_mask == 2) > 0 or random.random() < 0.05:
-                    file_id = f"{pid}_nodule{i}_slice{z}_{uuid.uuid4().hex[:6]}"
+                    # --- CẮT PATCH 128x128 TẠI TÂM KHỐI U ---
+                    # Chỉ cắt và lưu những slice THỰC SỰ CÓ KHỐI U
+                if np.sum(slice_mask == 2) > 0:
+                    patch_size = 128
+                    half_patch = patch_size // 2
 
-                    np.save(os.path.join(img_dir, f"{file_id}.npy"), slice_img)
-                    np.save(os.path.join(mask_dir, f"{file_id}.npy"), slice_mask)
-                    stats["slices"] += 1
+                    # 1. Tìm tâm của khối u trên slice này
+                    cx = (x_s + x_e) // 2
+                    cy = (y_s + y_e) // 2
+
+                    # 2. Tính tọa độ khung cắt
+                    x1, x2 = cx - half_patch, cx + half_patch
+                    y1, y2 = cy - half_patch, cy + half_patch
+
+                    # 3. Chống tràn viền (Nếu u nằm sát mép ảnh 512, đẩy khung cắt lùi lại)
+                    if x1 < 0:
+                        x2 += (0 - x1)
+                        x1 = 0
+                    elif x2 > h_img:
+                        x1 -= (x2 - h_img)
+                        x2 = h_img
+
+                    if y1 < 0:
+                        y2 += (0 - y1)
+                        y1 = 0
+                    elif y2 > w_img:
+                        y1 -= (y2 - w_img)
+                        y2 = w_img
+
+                    # 4. Cắt ảnh và mask
+                    patch_img = slice_img[x1:x2, y1:y2]
+                    patch_mask = slice_mask[x1:x2, y1:y2]
+
+                    # 5. Lưu lại nếu kích thước chuẩn 128x128
+                    if patch_img.shape == (patch_size, patch_size):
+                        file_id = f"{pid}_nodule{i}_slice{z}_{uuid.uuid4().hex[:6]}"
+                        np.save(os.path.join(img_dir, f"{file_id}.npy"), patch_img)
+                        np.save(os.path.join(mask_dir, f"{file_id}.npy"), patch_mask)
+
+                        if "slices" not in stats:
+                            stats["slices"] = 0
+                        stats["slices"] += 1
 
             valid_nodules += 1
 
@@ -214,6 +251,8 @@ def main():
                 if res["success"]:
                     total_slices += res["slices"]
                     done_pids.add(res["pid"])
+                else:
+                    print(f"\n[LỖI] Bệnh nhân {res['pid']} thất bại vì: {res.get('error')}")
 
                 # Lưu log định kỳ (safe write)
                 if len(done_pids) % 10 == 0:
