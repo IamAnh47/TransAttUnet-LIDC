@@ -2,3 +2,5 @@ data
 venv
 processed.tar.gz
 outputs
+results_roi
+logs

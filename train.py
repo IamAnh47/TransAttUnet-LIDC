@@ -152,12 +152,13 @@ def validate(model, loader, criterion, device):
     }
 
 
-def save_checkpoint(state, is_best, checkpoint_dir):
-    filename = os.path.join(checkpoint_dir, "last_checkpoint.pth")
+def save_checkpoint(state, is_best, checkpoint_dir, fold):
+    """Cập nhật thêm tham số `fold` để lưu tên file không bị đè nhau"""
+    filename = os.path.join(checkpoint_dir, f"last_checkpoint_fold_{fold}.pth")
     torch.save(state, filename)
 
     if is_best:
-        best_filename = os.path.join(checkpoint_dir, "best_model.pth")
+        best_filename = os.path.join(checkpoint_dir, f"best_model_fold_{fold}.pth")
         torch.save(state['model_state_dict'], best_filename)
 
 
@@ -175,132 +176,124 @@ def main():
     device = torch.device(cfg['train']['device'] if torch.cuda.is_available() else "cpu")
     print(f"Training on: {device}")
 
-    # ===== DATA =====
-    train_ds = TransAttUnetDataset(
-        cfg['paths']['modal_processed_data'],
-        cfg['paths']['modal_split_file'],
-        mode='train'
-    )
+    # =================================================================
+    # 1. TỰ ĐỘNG HÓA K-FOLD SPLITTING TRÊN VOLUME
+    # =================================================================
+    orig_split_file = cfg['paths']['modal_split_file']
+    # Đổi tên file: split.json -> split_kfold.json
+    kfold_split_file = orig_split_file.replace(".json", "_kfold.json")
+    k_folds = cfg['train'].get('k_fold', 5)
 
-    val_ds = TransAttUnetDataset(
-        cfg['paths']['modal_processed_data'],
-        cfg['paths']['modal_split_file'],
-        mode='val'
-    )
+    auto_generate_kfold(orig_split_file, kfold_split_file, k=k_folds)
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg['train']['batch_size'],
-        shuffle=True,
-        num_workers=cfg['data']['num_workers'],
-        pin_memory=True
-    )
+    # Cập nhật config để Dataset biết đường đọc file mới
+    cfg['paths']['modal_split_file'] = kfold_split_file
 
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=cfg['train']['batch_size'],
-        shuffle=False,
-        num_workers=cfg['data']['num_workers'],
-        pin_memory=True
-    )
+    # =================================================================
+    # 2. VÒNG LẶP HUẤN LUYỆN K-FOLD
+    # =================================================================
+    for fold in range(k_folds):
+        print("\n" + "=" * 50)
+        print(f"🔥 ĐANG CHẠY FOLD {fold} / {k_folds - 1}")
+        print("=" * 50)
 
-    # ===== MODEL =====
-    model = TransAttUnet(
-        n_channels=cfg['model']['architecture']['n_channels'],
-        n_classes=cfg['model']['architecture']['n_classes']
-    ).to(device)
-
-    # ===== LOSS (có weight) =====
-    class_weights = cfg['train']['loss'].get('class_weights', [0.1, 0.1, 0.8])
-    class_weights = torch.tensor(class_weights, dtype=torch.float32).to(device)
-
-    # Đọc tham số Focal Tversky từ file config.yaml
-    # criterion = FocalTverskyBoundaryLoss(
-    #     alpha=cfg['train']['loss']['alpha'],
-    #     beta=cfg['train']['loss']['beta'],
-    #     gamma=cfg['train']['loss']['gamma'],
-    #     smooth=cfg['train']['loss']['smooth'],
-    #     class_weights=class_weights,
-    #     boundary_weight=0.3
-    # )
-    criterion = AttentionWeightedFocalTverskyLoss(alpha=0.3, beta=0.7)
-    # ===== OPTIMIZER =====
-    optimizer = optim.AdamW(
-        model.parameters(),
-        lr=cfg['train']['optimizer']['lr'],
-        weight_decay=cfg['train']['optimizer']['weight_decay']
-    )
-
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=cfg['train']['epochs'],
-        eta_min=1e-6
-    )
-
-    # ===== RESUME =====
-    start_epoch = 1
-    best_dice = 0.0
-
-    if args.resume:
-        checkpoint = torch.load(args.resume, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-
-        start_epoch = checkpoint['epoch'] + 1
-        best_dice = checkpoint['best_dice']
-
-        print(f"Resumed from epoch {checkpoint['epoch']} | Best Dice: {best_dice:.4f}")
-
-    # ===== TRAIN =====
-    patience = cfg['train'].get('early_stopping', 20)
-    no_improve_count = 0
-
-    for epoch in range(start_epoch, cfg['train']['epochs'] + 1):
-        print(f"\nEpoch [{epoch}]")
-
-        train_loss, train_dice, train_class_losses = train_one_epoch(
-            model, train_loader, criterion, optimizer, device
+        # Khởi tạo lại Dữ liệu cho từng Fold
+        # (Lưu ý: Bạn nhớ cập nhật dataset.py để hỗ trợ truyền biến fold_idx nhé)
+        train_ds = TransAttUnetDataset(
+            cfg['paths']['modal_processed_data'],
+            cfg['paths']['modal_split_file'],
+            mode='train',
+            fold_idx=fold  # Thêm biến này
         )
 
-        val_loss, val_metrics = validate(
-            model, val_loader, criterion, device
+        val_ds = TransAttUnetDataset(
+            cfg['paths']['modal_processed_data'],
+            cfg['paths']['modal_split_file'],
+            mode='val',
+            fold_idx=fold  # Thêm biến này
         )
 
-        scheduler.step()
+        train_loader = DataLoader(
+            train_ds, batch_size=cfg['train']['batch_size'],
+            shuffle=True, num_workers=cfg['data']['num_workers'], pin_memory=True
+        )
 
-        print(f"Train Loss: {train_loss:.4f} | Dice: {train_dice:.4f}")
-        print(f"Val Loss:   {val_loss:.4f} | Dice: {val_metrics['dice']:.4f}")
+        val_loader = DataLoader(
+            val_ds, batch_size=cfg['train']['batch_size'],
+            shuffle=False, num_workers=cfg['data']['num_workers'], pin_memory=True
+        )
 
-        class_dice_str = ", ".join([f"{d:.4f}" for d in val_metrics['dice_per_class']])
-        print(f"Val Dice per class: {class_dice_str}")
+        # BẮT BUỘC: Reset lại Model, Optimizer và Scheduler về trạng thái ban đầu cho mỗi Fold
+        model = TransAttUnet(
+            n_channels=cfg['model']['architecture']['n_channels'],
+            n_classes=cfg['model']['architecture']['n_classes']
+        ).to(device)
 
-        # Kiểm tra có cải thiện Dice
-        is_best = val_metrics['dice'] > best_dice
-        if is_best:
-            best_dice = val_metrics['dice']
-            no_improve_count = 0
-            print(f"New Best Dice: {best_dice:.4f}")
-        else:
-            no_improve_count += 1
-            print(f"No improvement for {no_improve_count}/{patience} epochs")
+        criterion = AttentionWeightedFocalTverskyLoss(alpha=0.3, beta=0.7)
 
-        checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
-            'best_dice': best_dice
-        }
+        optimizer = optim.AdamW(
+            model.parameters(),
+            lr=cfg['train']['optimizer']['lr'],
+            weight_decay=cfg['train']['optimizer']['weight_decay']
+        )
 
-        if is_best or epoch % cfg['train']['save_interval'] == 0:
-            save_checkpoint(checkpoint, is_best, cfg['paths']['checkpoint_dir'])
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=cfg['train']['epochs'], eta_min=1e-6
+        )
 
-        if no_improve_count >= patience:
-            print(f"Early stopping triggered at epoch {epoch}. Best Dice: {best_dice:.4f}")
-            break
+        # Logic Resume (Hiện tại hỗ trợ resume fold cuối cùng bị crash)
+        start_epoch = 1
+        best_dice = 0.0
 
-    print(f"\nTraining Done | Best Dice: {best_dice:.4f}")
+        # Vòng lặp Epoch tiêu chuẩn cho Fold hiện tại
+        patience = cfg['train'].get('early_stopping', 20)
+        no_improve_count = 0
+
+        for epoch in range(start_epoch, cfg['train']['epochs'] + 1):
+            print(f"\n[Fold {fold}] Epoch [{epoch}]")
+
+            train_loss, train_dice, train_class_losses = train_one_epoch(
+                model, train_loader, criterion, optimizer, device
+            )
+
+            val_loss, val_metrics = validate(
+                model, val_loader, criterion, device
+            )
+
+            scheduler.step()
+
+            print(f"Train Loss: {train_loss:.4f} | Dice: {train_dice:.4f}")
+            print(f"Val Loss:   {val_loss:.4f} | Dice: {val_metrics['dice']:.4f}")
+
+            # Kiểm tra cải thiện
+            is_best = val_metrics['dice'] > best_dice
+            if is_best:
+                best_dice = val_metrics['dice']
+                no_improve_count = 0
+                print(f"⭐ New Best Dice for Fold {fold}: {best_dice:.4f}")
+            else:
+                no_improve_count += 1
+
+            # Lưu checkpoint có đuôi fold
+            checkpoint = {
+                'epoch': epoch,
+                'fold': fold,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'best_dice': best_dice
+            }
+
+            if is_best or epoch % cfg['train']['save_interval'] == 0:
+                save_checkpoint(checkpoint, is_best, cfg['paths']['checkpoint_dir'], fold)
+
+            if no_improve_count >= patience:
+                print(f"🛑 Early stopping Fold {fold} at epoch {epoch}. Best Dice: {best_dice:.4f}")
+                break
+
+        print(f"\n✅ Hoàn thành Fold {fold} | Best Dice: {best_dice:.4f}")
+
+    print("\n🎉 HOÀN THÀNH TRAINING TOÀN BỘ K-FOLD!")
 
 
 if __name__ == "__main__":

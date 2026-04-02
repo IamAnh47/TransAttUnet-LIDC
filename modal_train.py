@@ -3,7 +3,7 @@ import os
 import subprocess
 
 ignore_patterns = [
-    ".venv", ".idea", "__pycache__", "data", ".idea", "processed.tar.gz", "venv"
+    ".venv", ".idea", "__pycache__", "data", ".idea", "processed.tar.gz", "venv", "logs"
 ]
 # 1. Khởi tạo App
 app = modal.App("transattunet-lidc-training")
@@ -100,7 +100,6 @@ def train_remote(resume_path: str = None):
     timeout=7200,
 )
 def evaluate_remote(
-        model_path: str,
         vis_num: int = 50,
         config_path: str = "configs/config.yaml"
 ):
@@ -120,7 +119,6 @@ def evaluate_remote(
     cmd = [
         "python", "inference.py",
         "--config", config_path,
-        "--model_path", model_path,
         "--vis_num", str(vis_num),
         "--save_dir", volume_output_dir
     ]
@@ -157,18 +155,11 @@ def train(resume: str = None):
 
 
 @app.local_entrypoint()
-def evaluate(
-    model_path: str = modal.parameter(),
-    vis_num: int = 50
-):
+def evaluate():
     """
     Chạy evaluation/inference trên tập test.
 
     Ví dụ sử dụng:
-    modal run -d modal_train.py::evaluate --model-path /mnt/storage/outputs/checkpoints/best_model.pth --vis-num 100
+    modal run -d modal_train.py::evaluate
     """
-    evaluate_remote.remote(
-        model_path=model_path,
-        vis_num=vis_num,
-        config_path="configs/config.yaml"
-    )
+    evaluate_remote.remote()

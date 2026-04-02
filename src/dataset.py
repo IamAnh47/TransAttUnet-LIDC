@@ -90,7 +90,7 @@ import albumentations as A
 
 
 class TransAttUnetDataset(Dataset):
-    def __init__(self, data_dir, split_file, mode='train', multiplier=5):
+    def __init__(self, data_dir, split_file, mode='train', fold_idx=0, multiplier=5):
         """
         Data Augmentation Hạng Nặng bằng Albumentations.
         multiplier: Số lần nhân bản dữ liệu trong 1 Epoch (Mặc định x5)
@@ -106,7 +106,12 @@ class TransAttUnetDataset(Dataset):
         with open(split_file, 'r') as f:
             splits = json.load(f)
 
-        self.file_list = splits.get(mode, [])
+        if mode in ['train', 'val']:
+            self.file_list = splits.get(f'fold_{fold_idx}', {}).get(mode, [])
+        else:
+            self.file_list = splits.get('test', [])
+
+        # self.file_list = splits.get(mode, [])
 
         if not self.file_list:
             print(f"Cảnh báo: Tập dữ liệu '{mode}' rỗng!")

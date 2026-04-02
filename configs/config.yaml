@@ -48,9 +48,9 @@ model:
 
 train:
   # Các siêu tham số (Hyperparameters) theo bài báo
-  epochs: 200           # Tổng số vòng train
+  epochs: 100           # Tổng số vòng train
   batch_size: 8         # Batch size nhỏ do Transformer tốn bộ nhớ
-  k_fold: 5
+  k_fold: 2
   optimizer:
     name: "AdamW"
     lr: 0.0001
