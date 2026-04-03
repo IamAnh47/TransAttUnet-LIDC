@@ -39,7 +39,7 @@ model:
   name: "TransAttUnet"
   architecture:
     n_channels: 1       # Số kênh đầu vào
-    n_classes: 3        # Số kênh đầu ra
+    n_classes: 2        # Số kênh đầu ra
     # Tham số cho module Self-aware Attention (SAA)
     transformer_heads: 8  # Số lượng attention heads trong TSA
     # Loại kết nối Multi-scale Skip Connection
@@ -50,7 +50,7 @@ train:
   # Các siêu tham số (Hyperparameters) theo bài báo
   epochs: 100           # Tổng số vòng train
   batch_size: 8         # Batch size nhỏ do Transformer tốn bộ nhớ
-  k_fold: 2
+  k_fold: 1
   optimizer:
     name: "AdamW"
     lr: 0.0001
@@ -66,7 +66,7 @@ train:
     beta: 0.7           # Trọng số cho Dice Loss
     gamma: 0.75
     smooth: 1.0e-6      # Epsilon để tránh chia cho 0
-    class_weights: [0.1, 0.1, 0.8] # Trọng số của các class
+    class_weights: [0.1, 0.9] # Trọng số của các class
 
   # Cấu hình lưu/kiểm tra
   save_interval: 10     # Lưu model sau mỗi 10 epochs

@@ -1,7 +1,7 @@
-Evaluation Summary
+Evaluation Summary (Ensemble)
 ==================
-Dice: 0.9325
-Iou: 0.8965
-Recall: 0.9457
-Precision: 0.9416
-Accuracy: 0.9896
+Dice: 0.8195
+Iou: 0.9080
+Recall: 0.9541
+Precision: 0.9439
+Accuracy: 0.9971

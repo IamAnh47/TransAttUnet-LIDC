@@ -156,3 +156,30 @@ class FocalTverskyBoundaryLoss(nn.Module):
             return total_loss, torch.tensor(mean_dice, device=device), class_losses_vals
         else:
             return total_loss, torch.tensor(mean_dice, device=device)
+
+
+class MultiTaskLoss(nn.Module):
+    def __init__(self, seg_loss_fn, recon_weight=0.1):
+        """
+        Lớp bọc (Wrapper) để kết hợp Loss phân vùng (Segmentation) và Loss tái tạo (Reconstruction).
+        - seg_loss_fn: Hàm loss phân vùng hiện tại của bạn (VD: AttentionWeightedFocalTverskyLoss)
+        - recon_weight: Trọng số của nhánh tái tạo (thường để 0.1 để không lấn át nhánh chính)
+        """
+        super().__init__()
+        self.seg_loss_fn = seg_loss_fn
+        self.recon_loss_fn = nn.MSELoss()  # Dùng L2 Loss để đo độ lệch khôi phục ảnh
+        self.recon_weight = recon_weight
+
+    def forward(self, seg_logits, recon_logits, targets, inputs, attn_weights):
+        # 1. Tính Loss cho nhánh chính (Segmentation)
+        # Tái sử dụng lại chính xác hàm loss bạn truyền vào
+        seg_loss, dice_score = self.seg_loss_fn(seg_logits, targets, attn_weights)
+
+        # 2. Tính Loss cho nhánh phụ (Reconstruction)
+        # Đoán xem ảnh vẽ lại (recon_logits) có giống ảnh CT gốc (inputs) không
+        recon_loss = self.recon_loss_fn(recon_logits, inputs)
+
+        # 3. Tổng hợp Loss
+        total_loss = seg_loss + self.recon_weight * recon_loss
+
+        return total_loss, dice_score, recon_loss

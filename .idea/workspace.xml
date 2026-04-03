@@ -5,13 +5,114 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="406ccf75-9638-45c5-8c24-1a3005a51f26" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/configs/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/configs/config.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/inference.py" beforeDir="false" afterPath="$PROJECT_DIR$/inference.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/logs/train.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/modal_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/modal_train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/summary_metrics.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/test_results.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_0_dice_0.798.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_10_dice_0.869.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_11_dice_0.853.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_12_dice_0.665.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_13_dice_0.795.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_14_dice_0.823.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_15_dice_0.817.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_16_dice_0.820.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_17_dice_0.886.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_18_dice_0.940.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_19_dice_0.929.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_1_dice_0.781.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_20_dice_0.940.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_21_dice_0.868.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_22_dice_0.893.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_23_dice_0.928.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_24_dice_0.983.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_25_dice_0.974.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_26_dice_0.990.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_27_dice_0.987.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_28_dice_0.955.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_29_dice_0.961.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_2_dice_0.840.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_30_dice_0.983.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_31_dice_0.987.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_32_dice_0.982.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_33_dice_0.941.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_34_dice_0.981.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_35_dice_0.985.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_36_dice_0.993.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_37_dice_0.988.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_38_dice_0.990.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_39_dice_0.978.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_3_dice_0.847.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_40_dice_0.920.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_41_dice_0.977.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_42_dice_0.987.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_43_dice_0.976.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_44_dice_0.882.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_45_dice_0.766.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_46_dice_0.966.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_47_dice_0.986.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_48_dice_0.958.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_49_dice_0.897.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_4_dice_0.846.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_50_dice_0.866.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_51_dice_0.966.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_52_dice_0.966.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_53_dice_0.969.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_54_dice_0.963.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_55_dice_0.966.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_56_dice_0.881.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_57_dice_0.927.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_58_dice_0.959.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_59_dice_0.976.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_5_dice_0.848.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_60_dice_0.984.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_61_dice_0.984.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_62_dice_0.949.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_63_dice_0.957.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_64_dice_0.954.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_65_dice_0.910.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_66_dice_0.991.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_67_dice_0.975.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_68_dice_0.977.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_69_dice_0.938.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_6_dice_0.825.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_70_dice_0.953.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_71_dice_0.957.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_72_dice_0.849.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_73_dice_0.944.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_74_dice_0.957.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_75_dice_0.976.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_76_dice_0.908.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_77_dice_0.884.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_78_dice_0.964.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_79_dice_0.965.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_7_dice_0.822.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_80_dice_0.986.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_81_dice_0.981.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_82_dice_0.989.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_83_dice_0.981.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_84_dice_0.968.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_85_dice_0.974.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_86_dice_0.978.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_87_dice_0.940.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_88_dice_0.987.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_89_dice_0.964.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_8_dice_0.871.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_90_dice_0.955.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_91_dice_0.981.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_92_dice_0.981.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_93_dice_0.988.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_94_dice_0.975.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_95_dice_0.981.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_96_dice_0.985.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_97_dice_0.976.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_98_dice_0.976.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_99_dice_0.975.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/results_roi/visualizations/result_9_dice_0.877.png" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/dataset.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/loss.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/train.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />

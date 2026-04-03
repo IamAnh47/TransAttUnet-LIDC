@@ -31,7 +31,7 @@ def save_visualization(image, mask, pred, save_path, dice_score):
     axes[1].set_title("Ground Truth Mask")
     axes[1].axis('off')
 
-    masked_pred = np.ma.masked_where(pred_np != 2, pred_np)
+    masked_pred = np.ma.masked_where(pred_np != 1, pred_np)
     axes[2].imshow(img_np, cmap='gray')
     axes[2].imshow(masked_pred, cmap='autumn', alpha=0.6)
     axes[2].set_title(f"Prediction (Dice: {dice_score:.4f})")
@@ -42,7 +42,7 @@ def save_visualization(image, mask, pred, save_path, dice_score):
     plt.close(fig)
 
 
-def apply_crf(img_numpy, prob_numpy, num_classes=3):
+def apply_crf(img_numpy, prob_numpy, num_classes=2):
     C, H, W = prob_numpy.shape
     if img_numpy.max() <= 1.0:
         img_uint8 = (img_numpy * 255).astype(np.uint8)
@@ -67,18 +67,23 @@ def apply_crf(img_numpy, prob_numpy, num_classes=3):
 
 
 def tta_predict(model, images):
-    logits_orig, _ = model(images)
+    """
+    Test-Time Augmentation (TTA)
+    (Đã cập nhật để bỏ qua nhánh Reconstruction)
+    """
+    # Lấy logits nhánh 1, bỏ qua nhánh 2 (recon) và nhánh 3 (attn_weights)
+    logits_orig, _, _ = model(images)
 
     images_hf = torch.flip(images, dims=[3])
-    logits_hf, _ = model(images_hf)
+    logits_hf, _, _ = model(images_hf)
     logits_hf = torch.flip(logits_hf, dims=[3])
 
     images_vf = torch.flip(images, dims=[2])
-    logits_vf, _ = model(images_vf)
+    logits_vf, _, _ = model(images_vf)
     logits_vf = torch.flip(logits_vf, dims=[2])
 
     images_hvf = torch.flip(images, dims=[2, 3])
-    logits_hvf, _ = model(images_hvf)
+    logits_hvf, _, _ = model(images_hvf)
     logits_hvf = torch.flip(logits_hvf, dims=[2, 3])
 
     avg_logits = (logits_orig + logits_hf + logits_vf + logits_hvf) / 4.0
@@ -124,20 +129,21 @@ def evaluate_ensemble(models, loader, device, result_dir, vis_count=20):
             probs = torch.softmax(avg_logits, dim=1)
 
             # ÁP DỤNG CRF
-            crf_preds = []
-            for b in range(images.size(0)):
-                img_np = images[b, 0].cpu().numpy()
-                prob_np = probs[b].cpu().numpy()
-                pred_crf = apply_crf(img_np, prob_np, num_classes=3)
-                crf_preds.append(pred_crf)
-
-            crf_tensor = torch.tensor(np.stack(crf_preds), device=device, dtype=torch.long)
-            crf_logits = torch.nn.functional.one_hot(crf_tensor, num_classes=3).permute(0, 3, 1, 2).float() * 10.0
+            # crf_preds = []
+            # for b in range(images.size(0)):
+            #     img_np = images[b, 0].cpu().numpy()
+            #     prob_np = probs[b].cpu().numpy()
+            #     pred_crf = apply_crf(img_np, prob_np, num_classes=3)
+            #     crf_preds.append(pred_crf)
+            #
+            # crf_tensor = torch.tensor(np.stack(crf_preds), device=device, dtype=torch.long)
+            crf_tensor = torch.argmax(probs, dim=1)
+            crf_logits = torch.nn.functional.one_hot(crf_tensor, num_classes=2).permute(0, 3, 1, 2).float() * 10.0
 
             scores = calculate_metrics(crf_logits, masks)
 
             # LẤY RIÊNG CHỈ SỐ CỦA KHỐI U (CLASS 2)
-            dice_nodule = scores['dice_per_class'][2]
+            dice_nodule = scores['dice_per_class'][1]
             scores['dice'] = dice_nodule
 
             for k, v in scores.items():
@@ -150,8 +156,8 @@ def evaluate_ensemble(models, loader, device, result_dir, vis_count=20):
 
             pred_mask = crf_tensor.float()
             if images.size(0) == 1:
-                has_nodule_gt = (masks == 2).sum() > 0
-                has_nodule_pred = (pred_mask == 2).sum() > 0
+                has_nodule_gt = (masks == 1).sum() > 0
+                has_nodule_pred = (pred_mask == 1).sum() > 0
 
                 if has_nodule_gt or has_nodule_pred:
                     results_list.append({

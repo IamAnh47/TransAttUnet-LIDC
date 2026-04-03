@@ -9,7 +9,7 @@ import torch.optim as optim
 
 from src.model import TransAttUnet
 from src.dataset import TransAttUnetDataset
-from src.loss import AttentionWeightedFocalTverskyLoss
+from src.loss import MultiTaskLoss, AttentionWeightedFocalTverskyLoss
 from src.utils import load_config, set_seed, calculate_metrics, AverageMeter
 
 
@@ -25,6 +25,33 @@ def auto_generate_kfold(orig_split_path, kfold_split_path, k=5):
 
     with open(orig_split_path, 'r') as f:
         splits = json.load(f)
+
+    if k == 1:
+        print("⚠️ Chế độ k=1: Bỏ qua chia K-Fold, sử dụng lại đúng tập Train/Val gốc.")
+        kfold_splits = {
+            'test': splits.get('test', []),
+            'fold_0': {
+                'train': splits.get('train', []),
+                'val': splits.get('val', [])
+            }
+        }
+        with open(kfold_split_path, 'w') as f:
+            json.dump(kfold_splits, f, indent=4)
+        print(f"✅ Đã tạo file config 1-Fold tại: {kfold_split_path}")
+        return
+
+    if os.path.exists(kfold_split_path):
+        # Kiểm tra dọn dẹp file hỏng
+        with open(kfold_split_path, 'r') as f:
+            check_splits = json.load(f)
+            if not check_splits.get('fold_0', {}).get('train'):
+                print("⚠️ Phát hiện file K-Fold cũ bị rỗng tập Train. Đang xóa để tạo lại...")
+                os.remove(kfold_split_path)
+            else:
+                print(f"✅ Đã tìm thấy file K-Fold split hợp lệ tại: {kfold_split_path}")
+                return
+
+    print(f"⚙️ Đang tự động trộn và chia {k}-Fold từ: {orig_split_path}...")
 
     # Gom Train và Val cũ thành một rổ chung
     dev_files = splits.get('train', []) + splits.get('val', [])
@@ -67,22 +94,25 @@ def train_one_epoch(model, loader, criterion, optimizer, device):
 
         optimizer.zero_grad()
 
-        # 1. Forward pass (Lấy cả output và attention weights)
-        outputs, attn_weights = model(images)
+        # 1. Forward pass (Bây giờ lấy cả output của nhánh tái tạo)
+        outputs, recon_outputs, attn_weights = model(images)
 
-        # 2. Tính Loss (Hỗ trợ Deep Supervision)
+        # 2. Tính Loss (Hỗ trợ Deep Supervision và Multi-Task)
         if isinstance(outputs, list):
-            # outputs[0] là ảnh chính
-            loss_main, dice_score = criterion(outputs[0], masks, attn_weights)
+            # Tính Loss nhánh chính (có DS)
+            loss_main, dice_score = criterion.seg_loss_fn(outputs[0], masks, attn_weights)
+            loss_ds1, _ = criterion.seg_loss_fn(outputs[1], masks, attn_weights)
+            loss_ds2, _ = criterion.seg_loss_fn(outputs[2], masks, attn_weights)
+            seg_loss_total = loss_main + 0.5 * loss_ds1 + 0.5 * loss_ds2
 
-            # outputs[1] và outputs[2] là nhánh phụ
-            loss_ds1, _ = criterion(outputs[1], masks, attn_weights)
-            loss_ds2, _ = criterion(outputs[2], masks, attn_weights)
+            # Tính Loss nhánh tái tạo (Ép ảnh đầu ra phải giống ảnh đầu vào)
+            recon_loss = criterion.recon_loss_fn(recon_outputs, images)
 
-            # Tổng hợp Loss
-            loss = loss_main + 0.5 * loss_ds1 + 0.5 * loss_ds2
+            # Gộp Loss
+            loss = seg_loss_total + criterion.recon_weight * recon_loss
         else:
-            loss, dice_score = criterion(outputs, masks, attn_weights)
+            # Code dự phòng nếu không dùng DS
+            loss, dice_score, recon_loss = criterion(outputs, recon_outputs, masks, images, attn_weights)
 
         # 3. Backward & Optimize
         loss.backward()
@@ -119,7 +149,10 @@ def validate(model, loader, criterion, device):
 
             masks = masks.squeeze(1).long()
 
-            outputs, attn_weights = model(images)
+            outputs, recon_outputs, attn_weights = model(images)
+
+            if isinstance(outputs, list):
+                outputs = outputs[0]
 
             # ===== DEBUG PROBABILITY =====
             if i == 0:
@@ -127,7 +160,7 @@ def validate(model, loader, criterion, device):
                 print(f"\n[DEBUG] Max prob: {probs.max().item():.4f}")
 
             # ===== LOSS =====
-            loss, dice_score = criterion(outputs, masks, attn_weights)
+            loss, dice_score, _ = criterion(outputs, recon_outputs, masks, images, attn_weights)
             loss_meter.update(loss.item(), images.size(0))
 
             # ===== METRICS =====
@@ -229,7 +262,8 @@ def main():
             n_classes=cfg['model']['architecture']['n_classes']
         ).to(device)
 
-        criterion = AttentionWeightedFocalTverskyLoss(alpha=0.3, beta=0.7)
+        core_loss = AttentionWeightedFocalTverskyLoss(alpha=0.3, beta=0.7)
+        criterion = MultiTaskLoss(seg_loss_fn=core_loss, recon_weight=0.1)
 
         optimizer = optim.AdamW(
             model.parameters(),

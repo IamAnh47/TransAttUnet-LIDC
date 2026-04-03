@@ -90,7 +90,7 @@ import albumentations as A
 
 
 class TransAttUnetDataset(Dataset):
-    def __init__(self, data_dir, split_file, mode='train', fold_idx=0, multiplier=5):
+    def __init__(self, data_dir, split_file, mode='train', fold_idx=0, multiplier=2):
         """
         Data Augmentation Hạng Nặng bằng Albumentations.
         multiplier: Số lần nhân bản dữ liệu trong 1 Epoch (Mặc định x5)
@@ -163,6 +163,11 @@ class TransAttUnetDataset(Dataset):
         # Image shape: (512, 512)
         image = np.load(img_path).astype(np.float32)
         mask = np.load(mask_path).astype(np.float32)
+
+        # --- ÉP TỪ 3 CLASS XUỐNG 2 CLASS ---
+        mask[mask == 1] = 0.0  # Biến Phổi thành Background
+        mask[mask == 2] = 1.0  # Đẩy Nodule (2) xuống thành nhãn (1)
+        # -----------------------------------
 
         # --- 3. ÁP DỤNG DATA AUGMENTATION ---
         if self.mode == 'train':
